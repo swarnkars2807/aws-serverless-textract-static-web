@@ -1,0 +1,1 @@
+# aws-serverless-textract-static-web

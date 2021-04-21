@@ -1,0 +1,144 @@
+service:
+  name: cloud-mavericks
+plugins:
+  - serverless-s3-sync
+ # - serverless-cloudfront-invalidate
+provider:
+  name: aws
+  region: ap-south-1
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - s3:GetObject
+        - s3:PutObject
+        - s3:PutObjectAcl
+        - s3:PutLifecycleConfiguration
+      Resource:
+        - arn:aws:s3:::cloud-mavericks-bucket
+        - arn:aws:s3:::cloud-mavericks-bucket/*
+  environment:
+    BUCKET_NAME: cloud-mavericks-bucket
+    DEPLOYED_REGION: ap-south-1
+custom:
+  cloudfrontInvalidate:
+    distributionIdKey: 'CloudFrontDistributionId'
+    items: # Add your files to invalidate here:
+      - '/index.html'
+  s3Sync:
+    - bucketName: cloud-mavericks-portal
+      localDir: cloud-mavericks-ui
+package:
+  individually: true
+functions:
+  getBucketSignUrl:
+    handler: node-api/getBucketUrl.handler
+    events:
+      - http:
+          path: /get-bucket-url
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
+    runtime: nodejs12.x
+    package:
+      exclude:
+        - ./**
+        - target/**
+        - documents/**
+        - cloud-mavericks-ui/**
+        - node_modules/**
+        - .settings/**
+        - package*.json
+        - deploy.sh
+      include: node-api/**
+  getFormData:
+    handler: com.cloud.marvericks.handler.LambdaJavaAPI
+    events:
+      - http:
+          path: /get-form-data
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+              - X-Amz-Date
+              - Authorization
+              - X-Api-Key
+              - X-Amz-Security-Token
+              - X-Amz-User-Agent
+            allowCredentials: false
+    runtime: java8
+    package:
+      artifact: target/cloud-mavericks-1.0.jar
+resources:
+  Resources:
+    S3UploadedBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: cloud-mavericks-bucket
+    S3StaticWebBucket:
+      Type: AWS::S3::Bucket
+      Properties:
+        BucketName: cloud-mavericks-portal
+        #versioningConfiguration:
+        #  Status: "Enabled"
+        #AccessControl: PublicRead
+    WebsiteBucketPolicy:
+      Type: AWS::S3::BucketPolicy
+      DependsOn:
+        - S3StaticWebBucket
+      Properties:
+        Bucket:
+          Ref: S3StaticWebBucket
+        PolicyDocument:
+          Statement:
+            - Sid: PublicReadGetObject
+              Effect: Allow
+              Principal:
+                AWS:  !Join ['', ['arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ', !Ref CloudFrontOriginAccessIdentity]]
+              Action:
+                - s3:GetObject
+              Resource: !Join ['', ['arn:aws:s3:::', !Ref S3StaticWebBucket, '/*']]
+    CloudFrontOriginAccessIdentity:
+      Type: "AWS::CloudFront::CloudFrontOriginAccessIdentity"
+      Properties:
+        CloudFrontOriginAccessIdentityConfig:
+          Comment: "cloud-mavericks-oai"
+    CFDistribution:
+      Type: "AWS::CloudFront::Distribution"
+      DependsOn:
+        - S3StaticWebBucket
+        - CloudFrontOriginAccessIdentity
+      Properties:
+        DistributionConfig:
+          Origins:
+            - DomainName: cloud-mavericks-portal.s3.amazonaws.com
+              OriginPath: ""
+              Id: S3BucketOrigin
+              S3OriginConfig:
+                OriginAccessIdentity: !Join ['', ['origin-access-identity/cloudfront/', !Ref CloudFrontOriginAccessIdentity]]
+          DefaultCacheBehavior:
+            AllowedMethods:
+              - GET
+              - HEAD
+            MinTTL: 2
+            MaxTTL: 10
+            DefaultTTL: 5
+            TargetOriginId: S3BucketOrigin
+            Compress: true
+            ForwardedValues:
+              QueryString: "false"
+              Cookies:
+                Forward: none
+            ViewerProtocolPolicy: allow-all
+          DefaultRootObject: index.html
+          Enabled: "true"
+          HttpVersion: "http2"
+          PriceClass: "PriceClass_100"

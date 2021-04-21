@@ -1,0 +1,14 @@
+{
+  "name": "cloud-mavericks",
+  "scripts": {
+    "test": "jest"
+  },
+  "dependencies": {
+    "serverless-s3-sync": "^1.17.0",
+    "aws-sdk": "^2.749.0"
+  },
+  "devDependencies": {
+    "jest": "^24.9.0",
+    "aws-sdk": "^2.749.0"
+  }
+}
